@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import dev.showroom.testdrive.config.ShowroomProperties;
 import dev.showroom.testdrive.web.UnprocessableException;
@@ -30,7 +31,8 @@ public class SlotPolicy {
                     "Slots start every " + rules.slotMinutes() + " minutes from the hour");
         }
         LocalTime time = start.toLocalTime();
-        if (time.isBefore(rules.opensAt()) || time.plusMinutes(rules.slotMinutes()).isAfter(rules.closesAt())) {
+        Optional<LocalTime> last = lastStart();
+        if (last.isEmpty() || time.isBefore(rules.opensAt()) || time.isAfter(last.get())) {
             throw new UnprocessableException("outside-opening-hours",
                     "The showroom runs test drives from " + rules.opensAt() + " to " + rules.closesAt());
         }
@@ -55,11 +57,29 @@ public class SlotPolicy {
     /** Every slot start on a day, in order (10:00, 10:30 ... 17:30 with the default rules). */
     public List<LocalDateTime> slotsOn(LocalDate date) {
         List<LocalDateTime> slots = new ArrayList<>();
-        LocalTime last = rules.closesAt().minusMinutes(rules.slotMinutes());
-        for (LocalTime t = rules.opensAt(); !t.isAfter(last); t = t.plusMinutes(rules.slotMinutes())) {
+        Optional<LocalTime> last = lastStart();
+        if (last.isEmpty()) {
+            return slots;
+        }
+        // t <= last means t + slot <= closesAt, so plusMinutes cannot wrap past midnight here.
+        for (LocalTime t = rules.opensAt(); !t.isAfter(last.get()); t = t.plusMinutes(rules.slotMinutes())) {
             slots.add(date.atTime(t));
         }
         return slots;
+    }
+
+    /**
+     * The latest start whose slot still ends at or before closing on the same day, or empty when no slot fits.
+     * LocalTime arithmetic wraps at midnight (23:30 + 30 min = 00:00), so the subtraction is guarded: a slot
+     * longer than the time from midnight to closing, or longer than the opening hours, leaves no valid start.
+     */
+    private Optional<LocalTime> lastStart() {
+        long slotSeconds = rules.slotMinutes() * 60L;
+        if (slotSeconds > rules.closesAt().toSecondOfDay()) {
+            return Optional.empty();
+        }
+        LocalTime last = rules.closesAt().minusSeconds(slotSeconds);
+        return last.isBefore(rules.opensAt()) ? Optional.empty() : Optional.of(last);
     }
 
     public boolean isFuture(LocalDateTime start) {

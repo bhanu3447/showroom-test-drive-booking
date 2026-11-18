@@ -80,7 +80,7 @@ sequenceDiagram
 |---|---|---|
 | GET | `/api/cars` | Active cars (cached) |
 | GET | `/api/cars/{id}` | One car, 404 `car-not-found` |
-| GET | `/api/cars/{carId}/slots?date=YYYY-MM-DD` | 16 half-hour slots, 10:00 to 17:30, with `available` |
+| GET | `/api/cars/{carId}/slots?date=YYYY-MM-DD` | 16 half-hour slots starting 10:00 to 17:30 (each ends by 18:00 closing), with `available` |
 | POST | `/api/bookings` | Header `Idempotency-Key` (8-64 chars) required. 201 + `Location` |
 | GET | `/api/bookings/{id}` | Phone number is masked in every response |
 | POST | `/api/bookings/{id}/cancel` | Frees the slot; repeating it is safe |
@@ -207,7 +207,7 @@ Central. That keeps the build independent of any mirror configured in `~/.m2/set
 
 | Test class | Kind | What it proves | Ran on the dev machine (no Docker) | CI |
 |---|---|---|---|---|
-| `SlotPolicyTest` (10) | Unit, fixed clock | Opening hours, alignment, past, booking window, 16 slots, phone masking | Yes, passed | Yes |
+| `SlotPolicyTest` (18) | Unit, fixed clock | Opening hours, alignment, past, booking window, 16 slots, phone masking; a slot must end by closing on the same day (23:30 rejected, last start = closing - slot length, no listed slot crosses midnight, a slot longer than opening hours gives none) | Yes, passed | Yes |
 | `IdempotencyServiceTest` (6) | Unit | Replay, key reuse 422, in-progress 409, release on failure, TTL and lease expiry | Yes, passed | Yes |
 | `BookingControllerTest` (5) | `@WebMvcTest` slice | 201 + Location + replay header, validation problem with field and header errors, 409, bad JSON | Yes, passed | Yes |
 | `PersistenceSliceTest` (4) | `@DataJpaTest` slice on H2 + Flyway | Seed data, slot primary key rejects a second hold, release, versioned update | Yes, passed | Yes |
@@ -247,7 +247,11 @@ Kafka and Redis code paths and of the image build.
    cached: a stale "available" would just produce 409s.
 7. **Problem details everywhere** with a stable `code` and `type` URI, so clients branch on codes, not on text.
 8. **Time:** one injected `Clock`, slot times in showroom local time (`Asia/Kolkata`), audit times as UTC
-   `Instant`. Single time zone by design; a multi-city chain would store the zone per showroom.
+   `Instant`. Single time zone by design; a multi-city chain would store the zone per showroom. A slot must
+   start at or after opening and end at or before closing on the same day: the start is compared with
+   `closesAt - slotMinutes`, never `start + slotMinutes` with closing, because `LocalTime` wraps at midnight
+   (23:30 + 30 min = 00:00 looked "before 18:00" and was once accepted). The subtraction is guarded too, so a
+   slot longer than the opening hours means no slot at all.
 9. **Profiles instead of mocks for local runs.** The `local` profile swaps infrastructure behind the same
    interfaces (`IdempotencyStore`, `BookingEventPublisher`), so the no-Docker tests exercise the real
    controllers, services, transactions, outbox relay and consumer handler.
