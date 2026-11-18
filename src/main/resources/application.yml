@@ -1,0 +1,80 @@
+# Default profile = the real stack (PostgreSQL, Redis, Kafka), as in docker-compose.yml.
+# The 'local' profile (application-local.yml) swaps all three for in-process stand-ins.
+spring:
+  application:
+    name: test-drive-booking
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/showroom}
+    username: ${DB_USER:showroom}
+    password: ${DB_PASSWORD:showroom}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema; Hibernate only checks it
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+      key-prefix: "cache:"
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+  mvc:
+    problemdetails:
+      enabled: true
+
+app:
+  showroom:
+    zone: Asia/Kolkata
+    opens-at: "10:00"
+    closes-at: "18:00"           # last slot starts at 17:30
+    slot-minutes: 30
+    max-days-ahead: 30
+  events:
+    transport: kafka               # kafka | in-memory
+    topic: showroom.test-drive-bookings.v1
+  idempotency:
+    store: redis                   # redis | in-memory
+    ttl: 24h
+  outbox:
+    poll-interval-ms: 500
+    batch-size: 50
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Showroom test-drive booking
+    description: Book a test drive; no double bookings; events via outbox and Kafka
+
+logging:
+  structured:
+    format:
+      console: ecs                 # JSON logs (Elastic Common Schema), MDC requestId included

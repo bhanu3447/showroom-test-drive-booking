@@ -1,0 +1,30 @@
+# No-Docker profile: H2 in PostgreSQL mode, in-memory event bus, in-memory idempotency
+# store, in-process cache. Same code paths, same Flyway migrations, same HTTP API.
+spring:
+  datasource:
+    url: jdbc:h2:mem:showroom;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  cache:
+    type: simple
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration
+      - org.springframework.boot.kafka.autoconfigure.metrics.KafkaMetricsAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.health.DataRedisHealthContributorAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.health.DataRedisReactiveHealthContributorAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.observation.LettuceObservationAutoConfiguration
+
+app:
+  events:
+    transport: in-memory
+  idempotency:
+    store: in-memory
+
+logging:
+  structured:
+    format:
+      console: ""                  # plain text logs when running by hand
